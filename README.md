@@ -56,6 +56,8 @@ sudo ./uninstall-service.sh
 sudo apt install nethogs
 ```
 
+The installer script can also auto-install `nethogs` (supports `apt`, `dnf/yum`, and `pacman` when available).
+
 Run as root (service does this) or grant capabilities to nethogs:
 
 ```bash
