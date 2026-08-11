@@ -176,7 +176,7 @@ class ProcessUsageTracker:
             if not m:
                 continue
 
-            proc_name, _pid_s, _uid_s, down_s, up_s = m.groups()
+            proc_name, _pid_s, _uid_s, up_s, down_s = m.groups()
             down_kbps = float(down_s)
             up_kbps = float(up_s)
             app_name = self._normalize_app_name(proc_name)
