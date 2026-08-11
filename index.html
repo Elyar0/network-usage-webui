@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Network Usage Monitor</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      body {
+        margin: 0;
+        font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        background: #0f172a;
+        color: #e2e8f0;
+      }
+      .wrap {
+        max-width: 920px;
+        margin: 32px auto;
+        padding: 0 16px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 16px;
+      }
+      .card {
+        background: #111827;
+        border: 1px solid #1f2937;
+        border-radius: 14px;
+        padding: 18px;
+      }
+      h1 {
+        margin: 0 0 16px;
+        font-size: 24px;
+      }
+      .label {
+        color: #94a3b8;
+        font-size: 14px;
+      }
+      .value {
+        font-size: 32px;
+        font-weight: 700;
+        margin-top: 6px;
+      }
+      .sub {
+        margin-top: 8px;
+        color: #94a3b8;
+        font-size: 13px;
+      }
+      canvas {
+        width: 100%;
+        height: 260px;
+        display: block;
+      }
+      .status {
+        margin-top: 10px;
+        color: #93c5fd;
+        font-size: 13px;
+      }
+      .error-text {
+        color: #fda4af;
+      }
+      .section-title {
+        margin: 0 0 10px;
+        font-size: 16px;
+        color: #cbd5e1;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      th,
+      td {
+        border-bottom: 1px solid #1f2937;
+        text-align: left;
+        padding: 8px 6px;
+      }
+      th {
+        color: #94a3b8;
+        font-weight: 600;
+      }
+      .mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>Real-time Network Usage</h1>
+      <div class="grid">
+        <div class="card">
+          <div class="label">Download Speed</div>
+          <div class="value" id="downSpeed">0 B/s</div>
+          <div class="sub">Total Download: <span id="downTotal">0 B</span></div>
+        </div>
+        <div class="card">
+          <div class="label">Upload Speed</div>
+          <div class="value" id="upSpeed">0 B/s</div>
+          <div class="sub">Total Upload: <span id="upTotal">0 B</span></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top: 16px">
+        <canvas id="chart" width="880" height="260"></canvas>
+        <div class="status" id="status">Connecting...</div>
+      </div>
+
+      <div class="grid" style="margin-top: 16px">
+        <div class="card">
+          <h2 class="section-title">Live Top Processes</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Process</th>
+                <th>Down/s</th>
+                <th>Up/s</th>
+                <th>Total/s</th>
+              </tr>
+            </thead>
+            <tbody id="liveProcessBody"></tbody>
+          </table>
+        </div>
+        <div class="card">
+          <h2 class="section-title">Daily Top Processes</h2>
+          <div class="sub" style="margin: 0 0 10px">Date: <span id="dailyDate">-</span></div>
+          <table>
+            <thead>
+              <tr>
+                <th>Process</th>
+                <th>Download</th>
+                <th>Upload</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody id="dailyProcessBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top: 16px">
+        <h2 class="section-title">All-time Top Processes</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Process</th>
+              <th>Download</th>
+              <th>Upload</th>
+              <th>Total</th>
+            </tr>
+          </thead>
+          <tbody id="allTimeProcessBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <script>
+      const downSpeedEl = document.getElementById("downSpeed");
+      const upSpeedEl = document.getElementById("upSpeed");
+      const downTotalEl = document.getElementById("downTotal");
+      const upTotalEl = document.getElementById("upTotal");
+      const statusEl = document.getElementById("status");
+      const liveProcessBody = document.getElementById("liveProcessBody");
+      const dailyProcessBody = document.getElementById("dailyProcessBody");
+      const allTimeProcessBody = document.getElementById("allTimeProcessBody");
+      const dailyDateEl = document.getElementById("dailyDate");
+      const canvas = document.getElementById("chart");
+      const ctx = canvas.getContext("2d");
+
+      const maxPoints = 80;
+      const downSeries = [];
+      const upSeries = [];
+
+      function formatBytes(value) {
+        const units = ["B", "KB", "MB", "GB", "TB"];
+        let n = value;
+        let i = 0;
+        while (n >= 1024 && i < units.length - 1) {
+          n /= 1024;
+          i += 1;
+        }
+        return `${n.toFixed(n >= 100 ? 0 : n >= 10 ? 1 : 2)} ${units[i]}`;
+      }
+
+      function drawChart() {
+        const w = canvas.width;
+        const h = canvas.height;
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = "#0b1220";
+        ctx.fillRect(0, 0, w, h);
+
+        const all = downSeries.concat(upSeries);
+        const peak = Math.max(1, ...all);
+        const scaleY = (val) => h - (val / peak) * (h - 24) - 12;
+        const stepX = w / Math.max(maxPoints - 1, 1);
+
+        // Grid
+        ctx.strokeStyle = "#1f2937";
+        ctx.lineWidth = 1;
+        for (let i = 1; i <= 4; i++) {
+          const y = (h / 5) * i;
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(w, y);
+          ctx.stroke();
+        }
+
+        function drawSeries(series, color) {
+          if (!series.length) return;
+          ctx.beginPath();
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 2;
+          for (let i = 0; i < series.length; i++) {
+            const x = i * stepX;
+            const y = scaleY(series[i]);
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          }
+          ctx.stroke();
+        }
+
+        drawSeries(downSeries, "#22d3ee");
+        drawSeries(upSeries, "#f472b6");
+
+        ctx.fillStyle = "#93c5fd";
+        ctx.font = "12px sans-serif";
+        ctx.fillText(`Peak: ${formatBytes(peak)}/s`, 10, 18);
+      }
+
+      function renderRows(tbody, rows, mode) {
+        if (!rows || !rows.length) {
+          tbody.innerHTML = `<tr><td colspan="4" style="color:#64748b">No data yet</td></tr>`;
+          return;
+        }
+        tbody.innerHTML = rows
+          .map((row) => {
+            if (mode === "live") {
+              return `<tr>
+                <td class="mono">${row.name}</td>
+                <td>${formatBytes(row.download_bps)}/s</td>
+                <td>${formatBytes(row.upload_bps)}/s</td>
+                <td>${formatBytes(row.total_bps)}/s</td>
+              </tr>`;
+            }
+            return `<tr>
+              <td class="mono">${row.name}</td>
+              <td>${formatBytes(row.download_bytes)}</td>
+              <td>${formatBytes(row.upload_bytes)}</td>
+              <td>${formatBytes(row.total_bytes)}</td>
+            </tr>`;
+          })
+          .join("");
+      }
+
+      async function tick() {
+        try {
+          const res = await fetch("/api/stats", { cache: "no-store" });
+          if (!res.ok) throw new Error("Network response not ok");
+          const data = await res.json();
+
+          downSpeedEl.textContent = `${formatBytes(data.download_bps)}/s`;
+          upSpeedEl.textContent = `${formatBytes(data.upload_bps)}/s`;
+          downTotalEl.textContent = formatBytes(data.download_total_bytes);
+          upTotalEl.textContent = formatBytes(data.upload_total_bytes);
+          statusEl.textContent = `Live • ${new Date().toLocaleTimeString()}`;
+
+          downSeries.push(data.download_bps);
+          upSeries.push(data.upload_bps);
+          if (downSeries.length > maxPoints) downSeries.shift();
+          if (upSeries.length > maxPoints) upSeries.shift();
+          drawChart();
+        } catch (err) {
+          statusEl.textContent = `Error: ${err.message}`;
+        }
+      }
+
+      async function tickProcesses() {
+        try {
+          const res = await fetch("/api/processes", { cache: "no-store" });
+          if (!res.ok) throw new Error("process API failed");
+          const data = await res.json();
+
+          if (data.tracker_status !== "running") {
+            statusEl.innerHTML = `<span class="error-text">Process tracker: ${data.tracker_status}. ${data.tracker_error || ""}</span>`;
+          }
+
+          dailyDateEl.textContent = data.daily_date || "-";
+          renderRows(liveProcessBody, data.current_processes || [], "live");
+          renderRows(dailyProcessBody, data.daily_top || [], "summary");
+          renderRows(allTimeProcessBody, data.all_time_top || [], "summary");
+        } catch (err) {
+          liveProcessBody.innerHTML = `<tr><td colspan="4" style="color:#fda4af">Error: ${err.message}</td></tr>`;
+        }
+      }
+
+      drawChart();
+      tick();
+      tickProcesses();
+      setInterval(tick, 1000);
+      setInterval(tickProcesses, 2000);
+    </script>
+  </body>
+</html>
