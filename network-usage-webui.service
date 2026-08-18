@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=/home/elyar/Projects/network-usage-webui
-ExecStart=/usr/bin/python3 /home/elyar/Projects/network-usage-webui/app.py
+ExecStart=/usr/bin/python3 "/home/elyar/Projects/network-usage-webui/app.py"
 Restart=always
 RestartSec=3
 User=root

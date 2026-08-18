@@ -74,7 +74,8 @@ ensure_nethogs
 
 echo "Installing systemd unit for ${APP_PY}"
 
-UNIT_CONTENT="[Unit]
+cat >"/etc/systemd/system/${UNIT_NAME}" <<EOF
+[Unit]
 Description=Network Usage Web UI
 After=network-online.target
 Wants=network-online.target
@@ -82,7 +83,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=${PROJECT_DIR}
-ExecStart=/usr/bin/python3 ${APP_PY}
+ExecStart=/usr/bin/python3 "${APP_PY}"
 Restart=always
 RestartSec=3
 User=root
@@ -90,14 +91,11 @@ Group=root
 
 [Install]
 WantedBy=multi-user.target
-"
-
-cat >"/etc/systemd/system/${UNIT_NAME}" <<EOF
-${UNIT_CONTENT}
 EOF
 
 systemctl daemon-reload
 systemctl enable --now "${UNIT_NAME}"
+systemctl restart "${UNIT_NAME}"
 
 echo
 echo "Installed and started: ${UNIT_NAME}"
